@@ -10,6 +10,17 @@ async function startServer() {
   app.use(express.raw({ limit: '15mb', type: 'application/octet-stream' }));
   app.use(express.json({ limit: '15mb' }));
 
+  // Middleware de CORS para permitir requisições de outras origens/domínios
+  app.use((req, res, next) => {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization, x-tinify-api-key');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PUT, DELETE');
+    if (req.method === 'OPTIONS') {
+      return res.sendStatus(200);
+    }
+    next();
+  });
+
   // API Seguro de Compressão de Imagens via Tinify
   app.post('/api/compress', async (req: express.Request, res: express.Response) => {
     try {
@@ -79,6 +90,58 @@ async function startServer() {
   // ==========================================
   // BARRAMENTO DE SEGURANÇA E PROTEÇÃO DE IP API
   // ==========================================
+
+  // Middleware de Proxy para a API de Segurança para contornar limitações de CORS e rede no navegador
+  app.use('/api/secure', async (req: express.Request, res: express.Response, next: express.NextFunction) => {
+    const secureHost = req.headers['x-secure-api-host'] as string;
+    if (secureHost && 
+        secureHost.trim() !== '' && 
+        secureHost.trim() !== 'undefined' && 
+        secureHost.trim() !== 'null') {
+      const targetUrl = `${secureHost.trim().replace(/\/$/, '')}${req.originalUrl}`;
+      console.log(`[Proxy Gateway] Repassando requisição de segurança para: ${targetUrl}`);
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 10000);
+        
+        const fetchOptions: RequestInit = {
+          method: req.method,
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+          },
+          signal: controller.signal,
+        };
+
+        if (req.method !== 'GET' && req.method !== 'HEAD' && req.body) {
+          fetchOptions.body = JSON.stringify(req.body);
+        }
+
+        const response = await fetch(targetUrl, fetchOptions);
+        clearTimeout(timeoutId);
+
+        if (!response.ok) {
+          const errText = await response.text();
+          console.error(`[Proxy Gateway] Erro retornado pela API externa: ${response.status}`, errText);
+          return res.status(response.status).json({
+            error: `Erro retornado pela API externa: ${response.status}`,
+            details: errText
+          });
+        }
+
+        const data = await response.json();
+        return res.json(data);
+      } catch (err: any) {
+        console.error('[Proxy Gateway] Falha catastrófica de comunicação com a API segura externa:', err);
+        return res.status(502).json({
+          error: 'A API de Segurança está instável ou offline no endereço fornecido pelo Barramento.',
+          details: err.message || err
+        });
+      }
+    } else {
+      next();
+    }
+  });
 
   // 1. Verificação de Conexão (Heartbeat) - Funções Vitais
   app.get('/api/secure/heartbeat', (req: express.Request, res: express.Response) => {
