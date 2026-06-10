@@ -4,7 +4,7 @@ import { createServer as createViteServer } from 'vite';
 
 async function startServer() {
   const app = express();
-  const PORT = 3000;
+  const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 
   // Middleware para receber corpos binários grandes (até 15MB) nas requisições de imagem
   app.use(express.raw({ limit: '15mb', type: 'application/octet-stream' }));
@@ -294,6 +294,24 @@ async function startServer() {
     }
   });
 
+  // Rota raiz amigável para documentar o funcionamento da API
+  app.get('/', (req: express.Request, res: express.Response) => {
+    return res.json({
+      name: "CoutiflexPro Industrial API Gateway",
+      status: "operational",
+      timestamp: new Date().toISOString(),
+      environment: process.env.NODE_ENV || 'development',
+      endpoints: {
+        compress: "/api/compress (POST)",
+        secureHeartbeat: "/api/secure/heartbeat (GET)",
+        secureCodeGenerator: "/api/secure/code-generator (POST)",
+        secureCrud: "/api/secure/crud (POST)",
+        secureAlerts: "/api/secure/alerts (POST)",
+        secureReport: "/api/secure/report (POST)"
+      }
+    });
+  });
+
   // Configuração do Vite Middleware de acordo com o ambiente
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
@@ -302,10 +320,12 @@ async function startServer() {
     });
     app.use(vite.middlewares);
   } else {
-    const distPath = path.join(process.cwd(), 'dist');
-    app.use(express.static(distPath));
-    app.get('*all', (req: express.Request, res: express.Response) => {
-      res.sendFile(path.join(distPath, 'index.html'));
+    // 404 padrão para rotas não mapeadas em ambiente de produção
+    app.use((req: express.Request, res: express.Response) => {
+      res.status(404).json({
+        error: "Rota não encontrada",
+        message: `A rota descrita [${req.method}] ${req.originalUrl} não existe neste barramento de API.`
+      });
     });
   }
 
