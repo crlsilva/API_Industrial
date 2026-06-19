@@ -4,16 +4,22 @@ import { createServer as createViteServer } from 'vite';
 
 async function startServer() {
   const app = express();
+  
+  // Porta de escuta com adaptação automática para Cloud Run (PORT) e ambiente local (3000)
   const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
+  const HOST = '0.0.0.0';
 
   // Middleware para receber corpos binários grandes (até 15MB) nas requisições de imagem
   app.use(express.raw({ limit: '15mb', type: 'application/octet-stream' }));
   app.use(express.json({ limit: '15mb' }));
 
-  // Middleware de CORS para permitir requisições de outras origens/domínios
+  // Middleware de CORS para permitir requisições de outras origens/domínios inclusive cabeçalhos personalizados
   app.use((req, res, next) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization, x-tinify-api-key');
+    res.setHeader(
+      'Access-Control-Allow-Headers',
+      'Origin, X-Requested-With, Content-Type, Accept, Authorization, x-tinify-api-key, x-secure-api-host'
+    );
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PUT, DELETE');
     if (req.method === 'OPTIONS') {
       return res.sendStatus(200);
@@ -329,8 +335,8 @@ async function startServer() {
     });
   }
 
-  app.listen(PORT, "0.0.0.0", () => {
-    console.log(`[Backend] Servidor rodando em http://localhost:${PORT}`);
+  app.listen(PORT, HOST, () => {
+    console.log(`[Backend] Servidor rodando em http://${HOST}:${PORT}`);
   });
 }
 
